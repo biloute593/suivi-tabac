@@ -1,0 +1,1044 @@
+import { useState, useEffect } from 'react';
+import { db } from '../db/database';
+import { format, subDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { TrendingDown, TrendingUp, Minus, Calendar, BarChart3, Target, Award, MapPin, Clock, Home, ChevronDown, ChevronUp } from 'lucide-react';
+import type { Cigarette, SituationCigarette, LieuCigarette } from '../types';
+import { SITUATIONS_LABELS, LIEUX_LABELS } from '../types';
+
+// Tranches horaires de 3h à partir de 6h
+const TRANCHES_HORAIRES = [
+  { id: '06h-09h', label: '06h - 09h', emoji: '🌅', debut: 6, fin: 9 },
+  { id: '09h-12h', label: '09h - 12h', emoji: '☀️', debut: 9, fin: 12 },
+  { id: '12h-15h', label: '12h - 15h', emoji: '🍽️', debut: 12, fin: 15 },
+  { id: '15h-18h', label: '15h - 18h', emoji: '☕', debut: 15, fin: 18 },
+  { id: '18h-21h', label: '18h - 21h', emoji: '🌆', debut: 18, fin: 21 },
+  { id: '21h-00h', label: '21h - 00h', emoji: '🌙', debut: 21, fin: 24 },
+  { id: '00h-06h', label: '00h - 06h', emoji: '🌃', debut: 0, fin: 6 },
+];
+
+function getTrancheHoraire(heure: string): string {
+  const h = parseInt(heure.split(':')[0]);
+  if (h >= 6 && h < 9) return '06h-09h';
+  if (h >= 9 && h < 12) return '09h-12h';
+  if (h >= 12 && h < 15) return '12h-15h';
+  if (h >= 15 && h < 18) return '15h-18h';
+  if (h >= 18 && h < 21) return '18h-21h';
+  if (h >= 21 && h < 24) return '21h-00h';
+  return '00h-06h';
+}
+
+interface SituationAnalyseComplete {
+  total: number;
+  pourcentage: number;
+  moyenneParJour: number;
+  parLieu: Record<string, number>;
+  parHoraire: Record<string, number>;
+  parType: Record<string, number>;
+  joursAvec: number;
+  scoreMoyen: number;
+}
+
+interface LieuAnalyseComplete {
+  total: number;
+  pourcentage: number;
+  moyenneParJour: number;
+  parSituation: Record<string, number>;
+  parHoraire: Record<string, number>;
+  parType: Record<string, number>;
+  joursAvec: number;
+  scoreMoyen: number;
+}
+
+interface HoraireAnalyseComplete {
+  total: number;
+  pourcentage: number;
+  moyenneParJour: number;
+  parLieu: Record<string, number>;
+  parSituation: Record<string, number>;
+  parType: Record<string, number>;
+  joursAvec: number;
+  scoreMoyen: number;
+}
+
+interface TypeAnalyseComplete {
+  total: number;
+  pourcentage: number;
+  moyenneParJour: number;
+  parLieu: Record<string, number>;
+  parSituation: Record<string, number>;
+  parHoraire: Record<string, number>;
+  joursAvec: number;
+  scoreMoyen: number;
+}
+
+interface AnalyseComplete {
+  totalCigarettes: number;
+  nombreJours: number;
+  moyenneJour: number;
+  tendance: 'up' | 'down' | 'stable';
+  meilleurJour: { date: string; total: number } | null;
+  pireJour: { date: string; total: number } | null;
+  dateDebut: string;
+  dateFin: string;
+  parSituation: Record<string, SituationAnalyseComplete>;
+  parLieu: Record<string, LieuAnalyseComplete>;
+  parHoraire: Record<string, HoraireAnalyseComplete>;
+  parType: Record<string, TypeAnalyseComplete>;
+  scoreMoyen: number;
+}
+
+export default function Analyses() {
+  const [periode, setPeriode] = useState<'semaine' | 'mois' | 'tout'>('tout');
+  const [analyse, setAnalyse] = useState<AnalyseComplete | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sectionOuverte, setSectionOuverte] = useState<'type' | 'situation' | 'lieu' | 'horaire' | null>('type');
+  const [detailOuvert, setDetailOuvert] = useState<string | null>(null);
+
+  useEffect(() => {
+    chargerAnalyses();
+  }, [periode]);
+
+  async function chargerAnalyses() {
+    setLoading(true);
+    try {
+      const aujourdhui = new Date();
+      const hierDate = subDays(aujourdhui, 1);
+      
+      let dateDebut: Date;
+      if (periode === 'tout') {
+        dateDebut = new Date('2025-11-01');
+      } else if (periode === 'mois') {
+        dateDebut = subDays(aujourdhui, 30);
+      } else {
+        dateDebut = subDays(aujourdhui, 7);
+      }
+
+      const journees = await db.journees
+        .where('date')
+        .between(format(dateDebut, 'yyyy-MM-dd'), format(hierDate, 'yyyy-MM-dd'), true, true)
+        .toArray();
+
+      const cigarettes: Cigarette[] = [];
+      const cigarettesParJournee: Record<string, Cigarette[]> = {};
+      
+      for (const j of journees) {
+        const cigs = await db.cigarettes.where('journeeId').equals(j.id!).toArray();
+        cigarettes.push(...cigs);
+        cigarettesParJournee[j.id!] = cigs;
+      }
+
+      const nombreJours = journees.length;
+
+      // Stats par jour pour tendance
+      const statsParJour = journees.map(j => ({
+        date: j.date,
+        total: cigarettesParJournee[j.id!]?.length || 0
+      }));
+
+      // Tendance
+      const midpoint = Math.floor(statsParJour.length / 2);
+      const moyennePremiere = statsParJour.slice(0, midpoint).reduce((acc, s) => acc + s.total, 0) / (midpoint || 1);
+      const moyenneSeconde = statsParJour.slice(midpoint).reduce((acc, s) => acc + s.total, 0) / ((statsParJour.length - midpoint) || 1);
+      let tendance: 'up' | 'down' | 'stable' = 'stable';
+      if (moyenneSeconde < moyennePremiere - 1) tendance = 'down';
+      else if (moyenneSeconde > moyennePremiere + 1) tendance = 'up';
+
+      // Meilleur/Pire jour
+      const joursNonVides = statsParJour.filter(s => s.total > 0);
+      const meilleurJour = joursNonVides.length > 0 ? joursNonVides.reduce((a, b) => a.total < b.total ? a : b) : null;
+      const pireJour = joursNonVides.length > 0 ? joursNonVides.reduce((a, b) => a.total > b.total ? a : b) : null;
+
+      // Analyse par SITUATION - HYPER COMPLETE
+      const parSituation: Record<string, SituationAnalyseComplete> = {};
+      const situationsJours: Record<string, Set<string>> = {};
+      
+      for (const c of cigarettes) {
+        if (!parSituation[c.situation]) {
+          parSituation[c.situation] = {
+            total: 0, pourcentage: 0, moyenneParJour: 0,
+            parLieu: {}, parHoraire: {}, parType: {},
+            joursAvec: 0, scoreMoyen: 0
+          };
+          situationsJours[c.situation] = new Set();
+        }
+        
+        parSituation[c.situation].total++;
+        parSituation[c.situation].parLieu[c.lieu] = (parSituation[c.situation].parLieu[c.lieu] || 0) + 1;
+        
+        const tranche = getTrancheHoraire(c.heure);
+        parSituation[c.situation].parHoraire[tranche] = (parSituation[c.situation].parHoraire[tranche] || 0) + 1;
+        parSituation[c.situation].parType[c.type] = (parSituation[c.situation].parType[c.type] || 0) + 1;
+        parSituation[c.situation].scoreMoyen += c.scoreCalcule;
+        
+        situationsJours[c.situation].add(c.journeeId);
+      }
+      
+      // Finaliser les stats par situation
+      for (const sit of Object.keys(parSituation)) {
+        parSituation[sit].pourcentage = (parSituation[sit].total / cigarettes.length) * 100;
+        parSituation[sit].joursAvec = situationsJours[sit].size;
+        parSituation[sit].moyenneParJour = parSituation[sit].total / nombreJours;
+        parSituation[sit].scoreMoyen = parSituation[sit].scoreMoyen / parSituation[sit].total;
+      }
+
+      // Analyse par LIEU - HYPER COMPLETE
+      const parLieu: Record<string, LieuAnalyseComplete> = {};
+      const lieuxJours: Record<string, Set<string>> = {};
+      
+      for (const c of cigarettes) {
+        if (!parLieu[c.lieu]) {
+          parLieu[c.lieu] = {
+            total: 0, pourcentage: 0, moyenneParJour: 0,
+            parSituation: {}, parHoraire: {}, parType: {},
+            joursAvec: 0, scoreMoyen: 0
+          };
+          lieuxJours[c.lieu] = new Set();
+        }
+        
+        parLieu[c.lieu].total++;
+        parLieu[c.lieu].parSituation[c.situation] = (parLieu[c.lieu].parSituation[c.situation] || 0) + 1;
+        
+        const tranche = getTrancheHoraire(c.heure);
+        parLieu[c.lieu].parHoraire[tranche] = (parLieu[c.lieu].parHoraire[tranche] || 0) + 1;
+        parLieu[c.lieu].parType[c.type] = (parLieu[c.lieu].parType[c.type] || 0) + 1;
+        parLieu[c.lieu].scoreMoyen += c.scoreCalcule;
+        
+        lieuxJours[c.lieu].add(c.journeeId);
+      }
+      
+      for (const lieu of Object.keys(parLieu)) {
+        parLieu[lieu].pourcentage = (parLieu[lieu].total / cigarettes.length) * 100;
+        parLieu[lieu].joursAvec = lieuxJours[lieu].size;
+        parLieu[lieu].moyenneParJour = parLieu[lieu].total / nombreJours;
+        parLieu[lieu].scoreMoyen = parLieu[lieu].scoreMoyen / parLieu[lieu].total;
+      }
+
+      // Analyse par HORAIRE - HYPER COMPLETE
+      const parHoraire: Record<string, HoraireAnalyseComplete> = {};
+      const horairesJours: Record<string, Set<string>> = {};
+      
+      for (const c of cigarettes) {
+        const tranche = getTrancheHoraire(c.heure);
+        
+        if (!parHoraire[tranche]) {
+          parHoraire[tranche] = {
+            total: 0, pourcentage: 0, moyenneParJour: 0,
+            parLieu: {}, parSituation: {}, parType: {},
+            joursAvec: 0, scoreMoyen: 0
+          };
+          horairesJours[tranche] = new Set();
+        }
+        
+        parHoraire[tranche].total++;
+        parHoraire[tranche].parLieu[c.lieu] = (parHoraire[tranche].parLieu[c.lieu] || 0) + 1;
+        parHoraire[tranche].parSituation[c.situation] = (parHoraire[tranche].parSituation[c.situation] || 0) + 1;
+        parHoraire[tranche].parType[c.type] = (parHoraire[tranche].parType[c.type] || 0) + 1;
+        parHoraire[tranche].scoreMoyen += c.scoreCalcule;
+        
+        horairesJours[tranche].add(c.journeeId);
+      }
+      
+      for (const h of Object.keys(parHoraire)) {
+        parHoraire[h].pourcentage = (parHoraire[h].total / cigarettes.length) * 100;
+        parHoraire[h].joursAvec = horairesJours[h].size;
+        parHoraire[h].moyenneParJour = parHoraire[h].total / nombreJours;
+        parHoraire[h].scoreMoyen = parHoraire[h].scoreMoyen / parHoraire[h].total;
+      }
+
+      // Analyse par TYPE - HYPER COMPLETE
+      const parType: Record<string, TypeAnalyseComplete> = {};
+      const typesJours: Record<string, Set<string>> = {};
+      
+      for (const c of cigarettes) {
+        if (!parType[c.type]) {
+          parType[c.type] = {
+            total: 0, pourcentage: 0, moyenneParJour: 0,
+            parLieu: {}, parSituation: {}, parHoraire: {},
+            joursAvec: 0, scoreMoyen: 0
+          };
+          typesJours[c.type] = new Set();
+        }
+        
+        parType[c.type].total++;
+        parType[c.type].parLieu[c.lieu] = (parType[c.type].parLieu[c.lieu] || 0) + 1;
+        parType[c.type].parSituation[c.situation] = (parType[c.type].parSituation[c.situation] || 0) + 1;
+        
+        const tranche = getTrancheHoraire(c.heure);
+        parType[c.type].parHoraire[tranche] = (parType[c.type].parHoraire[tranche] || 0) + 1;
+        parType[c.type].scoreMoyen += c.scoreCalcule;
+        
+        typesJours[c.type].add(c.journeeId);
+      }
+      
+      for (const t of Object.keys(parType)) {
+        parType[t].pourcentage = (parType[t].total / cigarettes.length) * 100;
+        parType[t].joursAvec = typesJours[t].size;
+        parType[t].moyenneParJour = parType[t].total / nombreJours;
+        parType[t].scoreMoyen = parType[t].scoreMoyen / parType[t].total;
+      }
+
+      const scoreMoyen = cigarettes.length > 0 
+        ? cigarettes.reduce((acc, c) => acc + c.scoreCalcule, 0) / cigarettes.length 
+        : 0;
+
+      setAnalyse({
+        totalCigarettes: cigarettes.length,
+        nombreJours,
+        moyenneJour: cigarettes.length / Math.max(nombreJours, 1),
+        tendance,
+        meilleurJour,
+        pireJour,
+        dateDebut: format(dateDebut, 'yyyy-MM-dd'),
+        dateFin: format(hierDate, 'yyyy-MM-dd'),
+        parSituation,
+        parLieu,
+        parHoraire,
+        parType,
+        scoreMoyen
+      });
+    } catch (error) {
+      console.error('Erreur:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-primary-600 border-primary-200"></div>
+      </div>
+    );
+  }
+
+  if (!analyse) {
+    return (
+      <div className="card text-center py-8">
+        <span className="text-5xl mb-4 block">📊</span>
+        <p className="text-gray-600">Pas encore de données à analyser</p>
+      </div>
+    );
+  }
+
+  const situationEmojis: Record<string, string> = {
+    apres_repas: '🍽️', pause: '☕', trajet: '🚗', ennui: '😑', stress: '😰',
+    social: '👥', attente: '⏳', reveil: '🌅', avant_repas: '🍴', avant_sortie: '🚪',
+    film: '🎬', telephone: '📱', voiture: '🚙', autre: '❓'
+  };
+
+  const lieuEmojis: Record<string, string> = {
+    maison: '🏠', travail: '🏢', exterieur: '🚶', voiture: '🚗', restaurant: '🍽️', chez_quelquun: '👥'
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Période */}
+      <div className="flex gap-2">
+        {(['tout', 'mois', 'semaine'] as const).map(p => (
+          <button
+            key={p}
+            onClick={() => setPeriode(p)}
+            className={`flex-1 py-3 px-3 rounded-xl font-semibold transition-all text-sm ${
+              periode === p
+                ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-lg'
+                : 'bg-white text-gray-700 border border-gray-200'
+            }`}
+          >
+            {p === 'tout' ? '📊 Tout' : p === 'mois' ? '📆 30j' : '📅 7j'}
+          </button>
+        ))}
+      </div>
+
+      {/* Résumé période */}
+      <div className="card bg-gradient-to-r from-slate-50 to-slate-100 border-slate-200">
+        <div className="text-center">
+          <p className="text-xs text-slate-500 mb-1">Période analysée</p>
+          <p className="font-bold text-slate-800">
+            {format(new Date(analyse.dateDebut), 'd MMM', { locale: fr })} → {format(new Date(analyse.dateFin), 'd MMM yyyy', { locale: fr })}
+          </p>
+          <p className="text-sm text-slate-600 mt-1">{analyse.nombreJours} jours</p>
+        </div>
+      </div>
+
+      {/* Stats principales */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+          <div className="flex items-center gap-2 mb-2">
+            <BarChart3 className="text-blue-600" size={20} />
+            <p className="text-sm font-semibold text-blue-900">Total</p>
+          </div>
+          <p className="text-3xl font-extrabold text-blue-700">{analyse.totalCigarettes}</p>
+          <p className="text-xs text-blue-600">cigarettes</p>
+        </div>
+
+        <div className="card bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="text-purple-600" size={20} />
+            <p className="text-sm font-semibold text-purple-900">Moyenne</p>
+          </div>
+          <p className="text-3xl font-extrabold text-purple-700">{analyse.moyenneJour.toFixed(1)}</p>
+          <p className="text-xs text-purple-600">/jour</p>
+        </div>
+      </div>
+
+      {/* Tendance */}
+      <div className={`card ${
+        analyse.tendance === 'down' ? 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
+        : analyse.tendance === 'up' ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200'
+        : 'bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200'
+      }`}>
+        <div className="flex items-center gap-4">
+          <div className={`p-3 rounded-xl ${
+            analyse.tendance === 'down' ? 'bg-green-500' : analyse.tendance === 'up' ? 'bg-red-500' : 'bg-gray-500'
+          }`}>
+            {analyse.tendance === 'down' ? <TrendingDown className="text-white" size={24} />
+             : analyse.tendance === 'up' ? <TrendingUp className="text-white" size={24} />
+             : <Minus className="text-white" size={24} />}
+          </div>
+          <div>
+            <p className="font-bold text-lg">
+              {analyse.tendance === 'down' ? '📉 En baisse !' : analyse.tendance === 'up' ? '📈 En hausse' : '➡️ Stable'}
+            </p>
+            <p className="text-sm text-gray-600">
+              {analyse.tendance === 'down' ? 'Bravo ! Tu consommes moins.' : analyse.tendance === 'up' ? 'Attention, ça augmente.' : 'Consommation constante.'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Meilleur / Pire */}
+      <div className="grid grid-cols-2 gap-4">
+        {analyse.meilleurJour && (
+          <div className="card bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+            <Award className="text-green-600 mb-1" size={20} />
+            <p className="text-xs text-green-900">Meilleur</p>
+            <p className="text-2xl font-extrabold text-green-700">{analyse.meilleurJour.total}</p>
+            <p className="text-xs text-green-600">{format(new Date(analyse.meilleurJour.date), 'EEE d/MM', { locale: fr })}</p>
+          </div>
+        )}
+        {analyse.pireJour && (
+          <div className="card bg-gradient-to-br from-orange-50 to-amber-50 border-orange-200">
+            <Target className="text-orange-600 mb-1" size={20} />
+            <p className="text-xs text-orange-900">Difficile</p>
+            <p className="text-2xl font-extrabold text-orange-700">{analyse.pireJour.total}</p>
+            <p className="text-xs text-orange-600">{format(new Date(analyse.pireJour.date), 'EEE d/MM', { locale: fr })}</p>
+          </div>
+        )}
+      </div>
+
+      {/* ============== SECTION PAR TYPE ============== */}
+      <div className="card border-2 border-rose-300">
+        <h3 className="text-lg font-bold flex items-center gap-2 text-rose-800 mb-4">
+          <span className="text-xl">🎭</span>
+          PAR TYPE DE CIGARETTE
+        </h3>
+        
+        <div className="space-y-3">
+          {Object.entries(analyse.parType)
+            .sort(([, a], [, b]) => b.total - a.total)
+            .map(([type, data]) => {
+              const typeConfig: Record<string, { label: string; emoji: string; color: string }> = {
+                besoin: { label: 'Besoin', emoji: '🔴', color: 'bg-red-500' },
+                plaisir: { label: 'Plaisir', emoji: '💚', color: 'bg-green-500' },
+                automatique: { label: 'Automatique', emoji: '⚪', color: 'bg-gray-400' }
+              };
+              const config = typeConfig[type] || { label: type, emoji: '❓', color: 'bg-gray-400' };
+              
+              return (
+                <div key={type}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      <span className="text-lg">{config.emoji}</span> {config.label}
+                    </span>
+                    <span className="text-sm font-bold">{data.total} <span className="text-xs text-gray-500">({data.pourcentage.toFixed(0)}%)</span></span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className={`h-2.5 rounded-full ${config.color}`}
+                      style={{ width: `${data.pourcentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+
+      {/* ============== SECTION PAR SITUATION ============== */}
+      <div className="card border-2 border-indigo-300">
+        <h3 className="text-lg font-bold flex items-center gap-2 text-indigo-800 mb-4">
+          <MapPin size={22} className="text-indigo-600" />
+          PAR SITUATION
+        </h3>
+        
+        <div className="space-y-3">
+          {Object.entries(analyse.parSituation)
+            .sort(([, a], [, b]) => b.total - a.total)
+            .slice(0, 6) // Top 6 situations
+            .map(([situation, data]) => (
+              <div key={situation}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <span className="text-lg">{situationEmojis[situation] || '📍'}</span> 
+                    {SITUATIONS_LABELS[situation as SituationCigarette] || situation}
+                  </span>
+                  <span className="text-sm font-bold">{data.total} <span className="text-xs text-gray-500">({data.pourcentage.toFixed(0)}%)</span></span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="h-2.5 rounded-full bg-indigo-500"
+                    style={{ width: `${data.pourcentage}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* ============== SECTION PAR LIEU ============== */}
+      <div className="card border-2 border-emerald-300">
+        <h3 className="text-lg font-bold flex items-center gap-2 text-emerald-800 mb-4">
+          <Home size={22} className="text-emerald-600" />
+          PAR LIEU
+        </h3>
+        
+        <div className="space-y-3">
+          {Object.entries(analyse.parLieu)
+            .sort(([, a], [, b]) => b.total - a.total)
+            .map(([lieu, data]) => (
+              <div key={lieu}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium flex items-center gap-1">
+                    <span className="text-lg">{lieuEmojis[lieu] || '📍'}</span> 
+                    {LIEUX_LABELS[lieu as LieuCigarette] || lieu}
+                  </span>
+                  <span className="text-sm font-bold">{data.total} <span className="text-xs text-gray-500">({data.pourcentage.toFixed(0)}%)</span></span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                  <div 
+                    className="h-2.5 rounded-full bg-emerald-500"
+                    style={{ width: `${data.pourcentage}%` }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* ============== SECTION PAR HORAIRE ============== */}
+      <div className="card border-2 border-amber-300">
+        <h3 className="text-lg font-bold flex items-center gap-2 text-amber-800 mb-4">
+          <Clock size={22} className="text-amber-600" />
+          PAR HORAIRE (TRANCHES 3H)
+        </h3>
+        
+        <div className="space-y-3">
+          {TRANCHES_HORAIRES
+            .filter(t => analyse.parHoraire[t.id] && analyse.parHoraire[t.id].total > 0)
+            .map(tranche => {
+              const data = analyse.parHoraire[tranche.id];
+              return (
+                <div key={tranche.id}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      <span className="text-lg">{tranche.emoji}</span> {tranche.label}
+                    </span>
+                    <span className="text-sm font-bold">{data.total} <span className="text-xs text-gray-500">({data.pourcentage.toFixed(0)}%)</span></span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="h-2.5 rounded-full bg-amber-500"
+                      style={{ width: `${data.pourcentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+
+
+      <div className="card border-2 border-rose-300">
+        <h3 className="text-lg font-bold flex items-center gap-2 text-rose-800 mb-4">
+          <span className="text-xl">🎭</span>
+          PAR TYPE DE CIGARETTE
+        </h3>
+        
+        <div className="space-y-2">
+          {Object.entries(analyse.parType)
+            .sort(([, a], [, b]) => b.total - a.total)
+            .map(([type, data]) => {
+              const typeConfig: Record<string, { label: string; emoji: string; color: string }> = {
+                besoin: { label: 'Besoin', emoji: '🔴', color: 'bg-red-500' },
+                plaisir: { label: 'Plaisir', emoji: '💚', color: 'bg-green-500' },
+                automatique: { label: 'Automatique', emoji: '⚪', color: 'bg-gray-400' }
+              };
+              const config = typeConfig[type] || { label: type, emoji: '❓', color: 'bg-gray-400' };
+              
+              return (
+                <div key={type}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium flex items-center gap-1">
+                      <span>{config.emoji}</span> {config.label}
+                    </span>
+                    <span className="text-sm font-bold">{data.total}</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full ${config.color}`}
+                      style={{ width: `${data.pourcentage}%` }}
+                    ></div>
+                  </div>
+                </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-20 h-3 bg-white/50 rounded-full overflow-hidden`}>
+                          <div className={`h-full rounded-full ${type === 'besoin' ? 'bg-red-500' : type === 'plaisir' ? 'bg-green-500' : 'bg-gray-400'}`} style={{ width: `${data.pourcentage}%` }} />
+                        </div>
+                        <span className={`font-extrabold text-lg w-10 ${config.color}`}>{data.total}</span>
+                        {detailOuvert === `type-${type}` ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                      </div>
+                    </button>
+                    
+                    {detailOuvert === `type-${type}` && (
+                      <div className={`p-4 ${type === 'besoin' ? 'bg-red-50' : type === 'plaisir' ? 'bg-green-50' : 'bg-gray-50'} space-y-4 animate-fade-in`}>
+                        {/* Stats globales */}
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="bg-white p-2 rounded-lg">
+                            <p className="text-xs text-gray-500">Total</p>
+                            <p className={`font-extrabold ${config.color}`}>{data.total}</p>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg">
+                            <p className="text-xs text-gray-500">Jours concernés</p>
+                            <p className={`font-extrabold ${config.color}`}>{data.joursAvec}/{analyse.nombreJours}</p>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg">
+                            <p className="text-xs text-gray-500">Score moyen</p>
+                            <p className={`font-extrabold ${config.color}`}>{data.scoreMoyen.toFixed(1)}</p>
+                          </div>
+                        </div>
+
+                        {/* Par Lieu */}
+                        <div className="bg-white p-3 rounded-lg">
+                          <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                            <Home size={14} /> RÉPARTITION PAR LIEU
+                          </p>
+                          <div className="space-y-1">
+                            {Object.entries(data.parLieu).sort(([,a],[,b]) => b-a).map(([lieu, count]) => (
+                              <div key={lieu} className="flex items-center justify-between text-sm">
+                                <span className="flex items-center gap-1">
+                                  <span>{lieuEmojis[lieu] || '📍'}</span>
+                                  <span>{LIEUX_LABELS[lieu as LieuCigarette] || lieu}</span>
+                                </span>
+                                <span className={`font-bold ${config.color}`}>{count} <span className="text-xs text-gray-400">({((count/data.total)*100).toFixed(0)}%)</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Par Situation */}
+                        <div className="bg-white p-3 rounded-lg">
+                          <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                            <MapPin size={14} /> RÉPARTITION PAR SITUATION
+                          </p>
+                          <div className="space-y-1">
+                            {Object.entries(data.parSituation).sort(([,a],[,b]) => b-a).map(([sit, count]) => (
+                              <div key={sit} className="flex items-center justify-between text-sm">
+                                <span className="flex items-center gap-1">
+                                  <span>{situationEmojis[sit] || '📍'}</span>
+                                  <span>{SITUATIONS_LABELS[sit as SituationCigarette] || sit}</span>
+                                </span>
+                                <span className={`font-bold ${config.color}`}>{count} <span className="text-xs text-gray-400">({((count/data.total)*100).toFixed(0)}%)</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Par Horaire */}
+                        <div className="bg-white p-3 rounded-lg">
+                          <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                            <Clock size={14} /> RÉPARTITION PAR HORAIRE (tranches 3h)
+                          </p>
+                          <div className="space-y-1">
+                            {TRANCHES_HORAIRES.filter(t => data.parHoraire[t.id]).map(t => (
+                              <div key={t.id} className="flex items-center justify-between text-sm">
+                                <span className="flex items-center gap-1">
+                                  <span>{t.emoji}</span>
+                                  <span>{t.label}</span>
+                                </span>
+                                <span className={`font-bold ${config.color}`}>{data.parHoraire[t.id]} <span className="text-xs text-gray-400">({((data.parHoraire[t.id]/data.total)*100).toFixed(0)}%)</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+            {/* Message pour automatiques */}
+            {analyse.parType.automatique && analyse.parType.automatique.total > 0 && (
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-sm text-amber-800">
+                  💡 <strong>{analyse.parType.automatique.total} cigarettes automatiques</strong> à réduire en priorité !
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ============== SECTION PAR SITUATION ============== */}
+      <div className="card border-2 border-indigo-300">
+        <button 
+          onClick={() => setSectionOuverte(sectionOuverte === 'situation' ? null : 'situation')}
+          className="w-full flex items-center justify-between"
+        >
+          <h3 className="text-lg font-bold flex items-center gap-2 text-indigo-800">
+            <MapPin size={22} className="text-indigo-600" />
+            📍 ANALYSE PAR SITUATION
+          </h3>
+          {sectionOuverte === 'situation' ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+        </button>
+        
+        {sectionOuverte === 'situation' && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-gray-500 bg-indigo-50 p-2 rounded">
+              🔍 Clique sur une situation pour voir l'analyse complète : lieux, horaires, types et statistiques détaillées
+            </p>
+            
+            {Object.entries(analyse.parSituation)
+              .sort(([, a], [, b]) => b.total - a.total)
+              .map(([situation, data]) => (
+                <div key={situation} className="border border-indigo-200 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setDetailOuvert(detailOuvert === `sit-${situation}` ? null : `sit-${situation}`)}
+                    className="w-full p-3 bg-gradient-to-r from-indigo-50 to-white flex items-center justify-between hover:from-indigo-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{situationEmojis[situation] || '📍'}</span>
+                      <div className="text-left">
+                        <p className="font-bold text-indigo-900">{SITUATIONS_LABELS[situation as SituationCigarette] || situation}</p>
+                        <p className="text-xs text-indigo-600">{data.total} cig · {data.pourcentage.toFixed(1)}% · ~{data.moyenneParJour.toFixed(1)}/jour</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-3 bg-indigo-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${data.pourcentage}%` }} />
+                      </div>
+                      <span className="font-extrabold text-indigo-700 text-lg w-8">{data.total}</span>
+                      {detailOuvert === `sit-${situation}` ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </div>
+                  </button>
+                  
+                  {detailOuvert === `sit-${situation}` && (
+                    <div className="p-4 bg-indigo-50 space-y-4 animate-fade-in">
+                      {/* Stats globales */}
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white p-2 rounded-lg">
+                          <p className="text-xs text-gray-500">Total</p>
+                          <p className="font-extrabold text-indigo-700">{data.total}</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-lg">
+                          <p className="text-xs text-gray-500">Jours concernés</p>
+                          <p className="font-extrabold text-indigo-700">{data.joursAvec}/{analyse.nombreJours}</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-lg">
+                          <p className="text-xs text-gray-500">Score moyen</p>
+                          <p className="font-extrabold text-indigo-700">{data.scoreMoyen.toFixed(1)}</p>
+                        </div>
+                      </div>
+
+                      {/* Par Lieu */}
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                          <Home size={14} /> RÉPARTITION PAR LIEU
+                        </p>
+                        <div className="space-y-1">
+                          {Object.entries(data.parLieu).sort(([,a],[,b]) => b-a).map(([lieu, count]) => (
+                            <div key={lieu} className="flex items-center justify-between text-sm">
+                              <span className="flex items-center gap-1">
+                                <span>{lieuEmojis[lieu] || '📍'}</span>
+                                <span>{LIEUX_LABELS[lieu as LieuCigarette] || lieu}</span>
+                              </span>
+                              <span className="font-bold text-indigo-700">{count} <span className="text-xs text-gray-400">({((count/data.total)*100).toFixed(0)}%)</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Par Horaire */}
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                          <Clock size={14} /> RÉPARTITION PAR HORAIRE (tranches 3h)
+                        </p>
+                        <div className="space-y-1">
+                          {TRANCHES_HORAIRES.filter(t => data.parHoraire[t.id]).map(t => (
+                            <div key={t.id} className="flex items-center justify-between text-sm">
+                              <span className="flex items-center gap-1">
+                                <span>{t.emoji}</span>
+                                <span>{t.label}</span>
+                              </span>
+                              <span className="font-bold text-indigo-700">{data.parHoraire[t.id]} <span className="text-xs text-gray-400">({((data.parHoraire[t.id]/data.total)*100).toFixed(0)}%)</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Par Type */}
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-xs font-bold text-gray-600 mb-2">🎭 RÉPARTITION PAR TYPE</p>
+                        <div className="flex gap-2">
+                          {data.parType.besoin && <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">🔴 Besoin: {data.parType.besoin}</span>}
+                          {data.parType.plaisir && <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">💚 Plaisir: {data.parType.plaisir}</span>}
+                          {data.parType.automatique && <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-bold">⚪ Auto: {data.parType.automatique}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* ============== SECTION PAR LIEU ============== */}
+      <div className="card border-2 border-teal-300">
+        <button 
+          onClick={() => setSectionOuverte(sectionOuverte === 'lieu' ? null : 'lieu')}
+          className="w-full flex items-center justify-between"
+        >
+          <h3 className="text-lg font-bold flex items-center gap-2 text-teal-800">
+            <Home size={22} className="text-teal-600" />
+            🏠 ANALYSE PAR LIEU
+          </h3>
+          {sectionOuverte === 'lieu' ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+        </button>
+        
+        {sectionOuverte === 'lieu' && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-gray-500 bg-teal-50 p-2 rounded">
+              🔍 Clique sur un lieu pour voir l'analyse complète : situations, horaires et types
+            </p>
+            
+            {Object.entries(analyse.parLieu)
+              .sort(([, a], [, b]) => b.total - a.total)
+              .map(([lieu, data]) => (
+                <div key={lieu} className="border border-teal-200 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setDetailOuvert(detailOuvert === `lieu-${lieu}` ? null : `lieu-${lieu}`)}
+                    className="w-full p-3 bg-gradient-to-r from-teal-50 to-white flex items-center justify-between hover:from-teal-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{lieuEmojis[lieu] || '📍'}</span>
+                      <div className="text-left">
+                        <p className="font-bold text-teal-900">{LIEUX_LABELS[lieu as LieuCigarette] || lieu}</p>
+                        <p className="text-xs text-teal-600">{data.total} cig · {data.pourcentage.toFixed(1)}% · ~{data.moyenneParJour.toFixed(1)}/jour</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-3 bg-teal-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-teal-500 rounded-full" style={{ width: `${data.pourcentage}%` }} />
+                      </div>
+                      <span className="font-extrabold text-teal-700 text-lg w-8">{data.total}</span>
+                      {detailOuvert === `lieu-${lieu}` ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                    </div>
+                  </button>
+                  
+                  {detailOuvert === `lieu-${lieu}` && (
+                    <div className="p-4 bg-teal-50 space-y-4 animate-fade-in">
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white p-2 rounded-lg">
+                          <p className="text-xs text-gray-500">Total</p>
+                          <p className="font-extrabold text-teal-700">{data.total}</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-lg">
+                          <p className="text-xs text-gray-500">Jours</p>
+                          <p className="font-extrabold text-teal-700">{data.joursAvec}/{analyse.nombreJours}</p>
+                        </div>
+                        <div className="bg-white p-2 rounded-lg">
+                          <p className="text-xs text-gray-500">Score</p>
+                          <p className="font-extrabold text-teal-700">{data.scoreMoyen.toFixed(1)}</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                          <MapPin size={14} /> SITUATIONS À CE LIEU
+                        </p>
+                        <div className="space-y-1">
+                          {Object.entries(data.parSituation).sort(([,a],[,b]) => b-a).map(([sit, count]) => (
+                            <div key={sit} className="flex items-center justify-between text-sm">
+                              <span className="flex items-center gap-1">
+                                <span>{situationEmojis[sit] || '📍'}</span>
+                                <span>{SITUATIONS_LABELS[sit as SituationCigarette] || sit}</span>
+                              </span>
+                              <span className="font-bold text-teal-700">{count} <span className="text-xs text-gray-400">({((count/data.total)*100).toFixed(0)}%)</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                          <Clock size={14} /> HORAIRES À CE LIEU (tranches 3h)
+                        </p>
+                        <div className="space-y-1">
+                          {TRANCHES_HORAIRES.filter(t => data.parHoraire[t.id]).map(t => (
+                            <div key={t.id} className="flex items-center justify-between text-sm">
+                              <span>{t.emoji} {t.label}</span>
+                              <span className="font-bold text-teal-700">{data.parHoraire[t.id]} <span className="text-xs text-gray-400">({((data.parHoraire[t.id]/data.total)*100).toFixed(0)}%)</span></span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-3 rounded-lg">
+                        <p className="text-xs font-bold text-gray-600 mb-2">🎭 TYPES</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {data.parType.besoin && <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">🔴 {data.parType.besoin}</span>}
+                          {data.parType.plaisir && <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">💚 {data.parType.plaisir}</span>}
+                          {data.parType.automatique && <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-bold">⚪ {data.parType.automatique}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* ============== SECTION PAR HORAIRE ============== */}
+      <div className="card border-2 border-amber-300">
+        <button 
+          onClick={() => setSectionOuverte(sectionOuverte === 'horaire' ? null : 'horaire')}
+          className="w-full flex items-center justify-between"
+        >
+          <h3 className="text-lg font-bold flex items-center gap-2 text-amber-800">
+            <Clock size={22} className="text-amber-600" />
+            ⏰ ANALYSE PAR HORAIRE (tranches 3h)
+          </h3>
+          {sectionOuverte === 'horaire' ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
+        </button>
+        
+        {sectionOuverte === 'horaire' && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-gray-500 bg-amber-50 p-2 rounded">
+              🔍 Tranches de 3 heures à partir de 6h. Clique pour voir lieux et situations par créneau.
+            </p>
+            
+            {TRANCHES_HORAIRES
+              .filter(t => analyse.parHoraire[t.id])
+              .map(tranche => {
+                const data = analyse.parHoraire[tranche.id];
+                return (
+                  <div key={tranche.id} className="border border-amber-200 rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setDetailOuvert(detailOuvert === `hor-${tranche.id}` ? null : `hor-${tranche.id}`)}
+                      className="w-full p-3 bg-gradient-to-r from-amber-50 to-white flex items-center justify-between hover:from-amber-100 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{tranche.emoji}</span>
+                        <div className="text-left">
+                          <p className="font-bold text-amber-900">{tranche.label}</p>
+                          <p className="text-xs text-amber-600">{data.total} cig · {data.pourcentage.toFixed(1)}% · ~{data.moyenneParJour.toFixed(1)}/jour</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-3 bg-amber-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-500 rounded-full" style={{ width: `${data.pourcentage}%` }} />
+                        </div>
+                        <span className="font-extrabold text-amber-700 text-lg w-8">{data.total}</span>
+                        {detailOuvert === `hor-${tranche.id}` ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                      </div>
+                    </button>
+                    
+                    {detailOuvert === `hor-${tranche.id}` && (
+                      <div className="p-4 bg-amber-50 space-y-4 animate-fade-in">
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div className="bg-white p-2 rounded-lg">
+                            <p className="text-xs text-gray-500">Total</p>
+                            <p className="font-extrabold text-amber-700">{data.total}</p>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg">
+                            <p className="text-xs text-gray-500">Jours</p>
+                            <p className="font-extrabold text-amber-700">{data.joursAvec}/{analyse.nombreJours}</p>
+                          </div>
+                          <div className="bg-white p-2 rounded-lg">
+                            <p className="text-xs text-gray-500">Score</p>
+                            <p className="font-extrabold text-amber-700">{data.scoreMoyen.toFixed(1)}</p>
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-lg">
+                          <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                            <Home size={14} /> LIEUX SUR CE CRÉNEAU
+                          </p>
+                          <div className="space-y-1">
+                            {Object.entries(data.parLieu).sort(([,a],[,b]) => b-a).map(([lieu, count]) => (
+                              <div key={lieu} className="flex items-center justify-between text-sm">
+                                <span>{lieuEmojis[lieu] || '📍'} {LIEUX_LABELS[lieu as LieuCigarette] || lieu}</span>
+                                <span className="font-bold text-amber-700">{count} <span className="text-xs text-gray-400">({((count/data.total)*100).toFixed(0)}%)</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-lg">
+                          <p className="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                            <MapPin size={14} /> SITUATIONS SUR CE CRÉNEAU
+                          </p>
+                          <div className="space-y-1">
+                            {Object.entries(data.parSituation).sort(([,a],[,b]) => b-a).map(([sit, count]) => (
+                              <div key={sit} className="flex items-center justify-between text-sm">
+                                <span>{situationEmojis[sit] || '📍'} {SITUATIONS_LABELS[sit as SituationCigarette] || sit}</span>
+                                <span className="font-bold text-amber-700">{count} <span className="text-xs text-gray-400">({((count/data.total)*100).toFixed(0)}%)</span></span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="bg-white p-3 rounded-lg">
+                          <p className="text-xs font-bold text-gray-600 mb-2">🎭 TYPES</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {data.parType.besoin && <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">🔴 {data.parType.besoin}</span>}
+                            {data.parType.plaisir && <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold">💚 {data.parType.plaisir}</span>}
+                            {data.parType.automatique && <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-bold">⚪ {data.parType.automatique}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        )}
+      </div>
+
+      {/* Score moyen global */}
+      <div className={`card ${
+        analyse.scoreMoyen <= 12 ? 'bg-gradient-to-br from-red-50 to-orange-50 border-red-200'
+        : analyse.scoreMoyen <= 18 ? 'bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-200'
+        : 'bg-gradient-to-br from-green-50 to-emerald-50 border-green-200'
+      }`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-600">Score moyen global</p>
+            <p className="text-4xl font-extrabold mt-1">{analyse.scoreMoyen.toFixed(1)}</p>
+          </div>
+          <div className="text-5xl">
+            {analyse.scoreMoyen <= 12 ? '🎯' : analyse.scoreMoyen <= 18 ? '📊' : '⭐'}
+          </div>
+        </div>
+        <p className="text-sm mt-2 text-gray-600">
+          {analyse.scoreMoyen <= 12 ? 'Beaucoup de cigarettes évitables !'
+           : analyse.scoreMoyen <= 18 ? 'Score moyen - continue à identifier les évitables'
+           : 'Bon score - cigarettes majoritairement justifiées'}
+        </p>
+      </div>
+    </div>
+  );
+}

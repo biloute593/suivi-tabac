@@ -1,0 +1,41 @@
+COPY AND PASTE THIS SQL IN SUPABASE SQL EDITOR:
+https://supabase.com/dashboard/project/azzltzrzmukvyaiyamkc/sql/new
+
+```sql
+-- Créer la table user_metadata pour stocker les informations personnelles
+CREATE TABLE IF NOT EXISTS user_metadata (
+  user_id UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+  date_naissance DATE,
+  debut_tabagisme DATE,
+  cigarettes_par_jour_max INTEGER DEFAULT 20,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Activer RLS (Row Level Security)
+ALTER TABLE user_metadata ENABLE ROW LEVEL SECURITY;
+
+-- Politique: Les utilisateurs peuvent voir toutes les métadonnées (pour simplifier)
+CREATE POLICY "Allow all select" ON user_metadata
+  FOR SELECT USING (true);
+
+-- Politique: Les utilisateurs peuvent insérer leurs métadonnées
+CREATE POLICY "Allow all insert" ON user_metadata
+  FOR INSERT WITH CHECK (true);
+
+-- Politique: Les utilisateurs peuvent mettre à jour leurs métadonnées
+CREATE POLICY "Allow all update" ON user_metadata
+  FOR UPDATE USING (true);
+
+-- Créer un enregistrement vide pour l'utilisateur LYDIE
+INSERT INTO user_metadata (user_id, date_naissance, debut_tabagisme, cigarettes_par_jour_max)
+SELECT user_id, NULL, NULL, 20
+FROM users
+WHERE pseudo = 'LYDIE'
+ON CONFLICT (user_id) DO NOTHING;
+
+-- Vérifier
+SELECT * FROM user_metadata;
+```
+
+AFTER EXECUTING THIS, RUN: node verify-metadata.mjs

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Supabase</title>
+</head>
+<body>
+    <h1>Test de connexion Supabase</h1>
+    <div id="result"></div>
+    
+    <script type="module">
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+        
+        const SUPABASE_URL = 'https://azzltzrzmukvyaiyamkc.supabase.co'
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6emx0enJ6bXVrdnlhaXlhbWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0ODQyMzEsImV4cCI6MjA4MTA2MDIzMX0.JTGjWSiWyGfZj34xBUlSqUoOp2qK3mBD0cMacBc5his'
+        
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+        
+        const resultDiv = document.getElementById('result')
+        resultDiv.innerHTML = '<p>Tentative de connexion...</p>'
+        
+        try {
+            // Test de login
+            const pseudo = 'LYDIE'
+            const password = 'LYDIE59'
+            const passwordHash = await hashPassword(password)
+            
+            const { data: users, error } = await supabase
+                .from('users')
+                .select('*')
+                .eq('pseudo', pseudo)
+                .eq('password_hash', passwordHash)
+            
+            if (error) {
+                resultDiv.innerHTML = `<p style="color:red">❌ Erreur: ${error.message}</p>`
+            } else if (!users || users.length === 0) {
+                resultDiv.innerHTML = '<p style="color:orange">⚠️ Utilisateur non trouvé</p>'
+            } else {
+                const user = users[0]
+                resultDiv.innerHTML = `
+                    <p style="color:green">✅ Connexion réussie !</p>
+                    <p>User ID: ${user.user_id}</p>
+                    <p>Pseudo: ${user.pseudo}</p>
+                    <p>Objectif: ${user.objectif_global}</p>
+                `
+                
+                // Test de récupération des journées
+                const { data: journees, error: journeesError } = await supabase
+                    .from('journees')
+                    .select('*')
+                    .eq('user_id', user.user_id)
+                    .order('date', { ascending: false })
+                
+                if (journeesError) {
+                    resultDiv.innerHTML += `<p style="color:red">❌ Erreur journées: ${journeesError.message}</p>`
+                } else {
+                    resultDiv.innerHTML += `<p>📅 Journées trouvées: ${journees.length}</p>`
+                }
+                
+                // Test de récupération des cigarettes
+                const { data: cigarettes, error: cigarettesError } = await supabase
+                    .from('cigarettes')
+                    .select('*')
+                    .eq('user_id', user.user_id)
+                
+                if (cigarettesError) {
+                    resultDiv.innerHTML += `<p style="color:red">❌ Erreur cigarettes: ${cigarettesError.message}</p>`
+                } else {
+                    resultDiv.innerHTML += `<p>🚬 Cigarettes trouvées: ${cigarettes.length}</p>`
+                }
+            }
+        } catch (err) {
+            resultDiv.innerHTML = `<p style="color:red">❌ Exception: ${err.message}</p>`
+        }
+        
+        async function hashPassword(password) {
+            const encoder = new TextEncoder()
+            const data = encoder.encode(password)
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+            const hashArray = Array.from(new Uint8Array(hashBuffer))
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+        }
+    </script>
+</body>
+</html>

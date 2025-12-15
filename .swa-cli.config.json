@@ -1,0 +1,10 @@
+{
+  "configurations": {
+    "suivi-tabac-web-free": {
+      "appLocation": "./dist",
+      "apiLocation": "./api",
+      "outputLocation": "",
+      "appDevserverUrl": "http://localhost:5173"
+    }
+  }
+}
