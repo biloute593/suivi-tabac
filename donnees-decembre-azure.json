@@ -1,0 +1,147 @@
+{
+  "journees": [
+    {
+      "id": "8c527e8d-6e0d-4e15-a19b-6fc44dfee009",
+      "date": "2025-12-01",
+      "typeJournee": "teletravail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-01T08:28:44.971Z",
+      "_rid": "XBpVALaGV2k1AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k1AAAAAAAAAA==/",
+      "_etag": "\"1a007973-0000-0e00-0000-692d51bd0000\"",
+      "_attachments": "attachments/",
+      "_ts": 1764577725
+    },
+    {
+      "id": "05c3912f-2a0f-4745-912b-8a73eb032de1",
+      "date": "2025-12-02",
+      "typeJournee": "travail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-01T23:49:52.791Z",
+      "_rid": "XBpVALaGV2k2AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k2AAAAAAAAAA==/",
+      "_etag": "\"1a00e77c-0000-0e00-0000-692e29a00000\"",
+      "_attachments": "attachments/",
+      "_ts": 1764632992
+    },
+    {
+      "id": "bfcb8ae6-14ba-4838-9c84-32d883d30548",
+      "date": "2025-12-03",
+      "typeJournee": "travail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-03T06:41:38.177Z",
+      "_rid": "XBpVALaGV2k3AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k3AAAAAAAAAA==/",
+      "_etag": "\"1a008a92-0000-0e00-0000-692fdba20000\"",
+      "_attachments": "attachments/",
+      "_ts": 1764744098
+    },
+    {
+      "id": "c8495880-50e2-41ec-a3fd-4548053f0912",
+      "date": "2025-12-04",
+      "typeJournee": "travail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-04T07:26:55.673Z",
+      "_rid": "XBpVALaGV2k4AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k4AAAAAAAAAA==/",
+      "_etag": "\"1a0049af-0000-0e00-0000-693137bf0000\"",
+      "_attachments": "attachments/",
+      "_ts": 1764833215
+    },
+    {
+      "id": "44d73314-74d6-4a05-a671-4ca44d3f2728",
+      "date": "2025-12-05",
+      "typeJournee": "teletravail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-05T08:05:16.562Z",
+      "_rid": "XBpVALaGV2k5AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k5AAAAAAAAAA==/",
+      "_etag": "\"1d00b071-0000-0e00-0000-6932923c0000\"",
+      "_attachments": "attachments/",
+      "_ts": 1764921916
+    },
+    {
+      "id": "cd3951af-b97e-40f7-8436-033fd7af125d",
+      "date": "2025-12-06",
+      "typeJournee": "weekend",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-05T23:02:56.017Z",
+      "_rid": "XBpVALaGV2k6AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k6AAAAAAAAAA==/",
+      "_etag": "\"400089d9-0000-0e00-0000-693364a00000\"",
+      "_attachments": "attachments/",
+      "_ts": 1764975776
+    },
+    {
+      "id": "8989047f-61da-4e5a-8151-71594d6a92c2",
+      "date": "2025-12-07",
+      "typeJournee": "weekend",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-06T23:07:18.496Z",
+      "_rid": "XBpVALaGV2k7AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k7AAAAAAAAAA==/",
+      "_etag": "\"59003edf-0000-0e00-0000-6934b7260000\"",
+      "_attachments": "attachments/",
+      "_ts": 1765062438
+    },
+    {
+      "id": "c4f14595-26e2-40cc-9637-d8abeb725171",
+      "date": "2025-12-08",
+      "typeJournee": "teletravail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-07T23:03:54.491Z",
+      "_rid": "XBpVALaGV2k8AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k8AAAAAAAAAA==/",
+      "_etag": "\"73003654-0000-0e00-0000-693607da0000\"",
+      "_attachments": "attachments/",
+      "_ts": 1765148634
+    },
+    {
+      "id": "1d4be8ca-dbd4-483f-bfc6-7c02869bf98a",
+      "date": "2025-12-09",
+      "typeJournee": "travail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-08T23:01:08.908Z",
+      "_rid": "XBpVALaGV2k9AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k9AAAAAAAAAA==/",
+      "_etag": "\"2101fd69-0000-0e00-0000-693758b40000\"",
+      "_attachments": "attachments/",
+      "_ts": 1765234868
+    },
+    {
+      "id": "0e7d0d65-5a6c-4dc5-8fb5-eea5e18cfad7",
+      "date": "2025-12-10",
+      "typeJournee": "travail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-09T23:00:35.860Z",
+      "_rid": "XBpVALaGV2k+AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k+AAAAAAAAAA==/",
+      "_etag": "\"000091a2-0000-0e00-0000-6938aa130000\"",
+      "_attachments": "attachments/",
+      "_ts": 1765321235
+    },
+    {
+      "id": "064d2b1d-deea-4cfb-8cc6-4788caa84f1c",
+      "date": "2025-12-11",
+      "typeJournee": "travail",
+      "objectifNombreMax": 12,
+      "createdAt": "2025-12-10T23:08:39.096Z",
+      "_rid": "XBpVALaGV2k-AAAAAAAAAA==",
+      "_self": "dbs/XBpVAA==/colls/XBpVALaGV2k=/docs/XBpVALaGV2k-AAAAAAAAAA==/",
+      "_etag": "\"01004b7a-0000-0e00-0000-6939fd770000\"",
+      "_attachments": "attachments/",
+      "_ts": 1765408119
+    }
+  ],
+  "cigarettes": [],
+  "objectifs": [],
+  "journal_notes": [],
+  "metadata": {
+    "date_export": "2025-12-12T03:01:52.683Z",
+    "periode": "2025-12-01 au 2025-12-11",
+    "total_journees": 11,
+    "total_cigarettes": 0,
+    "total_objectifs": 0,
+    "total_notes": 0
+  }
+}

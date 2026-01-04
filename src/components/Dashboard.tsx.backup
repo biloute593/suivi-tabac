@@ -1,0 +1,470 @@
+import { useState, useEffect } from 'react';
+import { db } from '../db/database';
+import type { Journee, Cigarette, Objectif } from '../types';
+import { TYPE_JOURNEE_LABELS } from '../types';
+import { format, addDays, subDays } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { getCigarettesASupprimer } from '../utils/statistiques';
+import { tempsDerniereClope } from '../utils/calculs';
+import { Clock, Target, AlertCircle, ChevronLeft, ChevronRight, Calendar, MessageCircle, Edit3 } from 'lucide-react';
+import SelectionTypeJournee from './SelectionTypeJournee';
+import ModifierCigarette from './ModifierCigarette';
+import ChatIA from './ChatIA';
+
+export default function Dashboard() {
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [journeeAujourdhui, setJourneeAujourdhui] = useState<Journee | null>(null);
+  const [cigarettesAujourdhui, setCigarettesAujourdhui] = useState<Cigarette[]>([]);
+  const [objectif, setObjectif] = useState<Objectif | null>(null);
+  const [derniereHeure, setDerniereHeure] = useState<string>('');
+  const [cigaretteAEviter, setCigaretteAEviter] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [cigaretteAModifier, setCigaretteAModifier] = useState<Cigarette | null>(null);
+  const [showChat, setShowChat] = useState(false);
+  const [cigaretteForChat, setCigaretteForChat] = useState<Cigarette | null>(null);
+
+  const dateSelectionnee = format(selectedDate, 'yyyy-MM-dd');
+  const isToday = dateSelectionnee === format(new Date(), 'yyyy-MM-dd');
+
+  const nombreCigarettes = cigarettesAujourdhui.length;
+  const objectifNombre = objectif?.nombreMax || 12;
+  const progression = Math.min((nombreCigarettes / objectifNombre) * 100, 100);
+  const objectifAtteint = nombreCigarettes <= objectifNombre;
+
+  useEffect(() => {
+    chargerDonnees();
+    
+    // Recharger toutes les 30 secondes pour mettre à jour le temps
+    const interval = setInterval(chargerDonnees, 30000);
+    return () => clearInterval(interval);
+  }, [selectedDate]);
+
+  async function chargerDonnees() {
+    try {
+      // Charger la journée sélectionnée
+      const journee = await db.journees.where('date').equals(dateSelectionnee).first();
+      setJourneeAujourdhui(journee || null);
+
+      // Charger les cigarettes de la journée
+      if (journee) {
+        const cigs = await db.cigarettes
+          .where('journeeId')
+          .equals(journee.id!)
+          .sortBy('heure');
+        setCigarettesAujourdhui(cigs);
+
+        if (cigs.length > 0) {
+          setDerniereHeure(cigs[cigs.length - 1].heure);
+        }
+      } else {
+        setCigarettesAujourdhui([]);
+      }
+
+      // Charger l'objectif actif
+      const obj = await db.objectifs.where('actif').equals(1).first();
+      setObjectif(obj || null);
+
+      // Charger la cigarette à éviter
+      const cigASupprimer = await getCigarettesASupprimer(1);
+      if (cigASupprimer.length > 0) {
+        const cig = cigASupprimer[0];
+        setCigaretteAEviter(`${cig.contexte} (score ${cig.cigarette.scoreCalcule})`);
+      }
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Erreur lors du chargement des données:', error);
+      setLoading(false);
+    }
+  }
+
+  function navigateDate(direction: 'prev' | 'next') {
+    if (direction === 'prev') {
+      setSelectedDate(subDays(selectedDate, 1));
+    } else {
+      const tomorrow = addDays(selectedDate, 1);
+      if (tomorrow <= new Date()) {
+        setSelectedDate(tomorrow);
+      }
+    }
+  }
+
+  function goToToday() {
+    setSelectedDate(new Date());
+  }
+
+  function handleCigaretteClick(cigarette: Cigarette) {
+    setCigaretteAModifier(cigarette);
+  }
+
+  function handleChatClick(cigarette?: Cigarette) {
+    setCigaretteForChat(cigarette || null);
+    setShowChat(true);
+  }
+
+  async function handleTypeJourneeSelect(type: string) {
+    const nouvJournee = await db.journees.add({
+      date: dateSelectionnee,
+      typeJournee: type as any,
+      createdAt: new Date().toISOString()
+    });
+
+    const journee = await db.journees.get(nouvJournee);
+    setJourneeAujourdhui(journee || null);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="relative">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary-200"></div>
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-t-primary-600 absolute top-0"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Sélecteur de date */}
+      <div className="card-gradient animate-slide-up">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => navigateDate('prev')}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+          >
+            <ChevronLeft size={24} className="text-gray-600" />
+          </button>
+          
+          <div className="flex-1 text-center">
+            <button
+              onClick={() => setShowCalendar(!showCalendar)}
+              className="inline-flex items-center gap-2 px-4 py-2 hover:bg-gray-100 rounded-xl transition-all"
+            >
+              <Calendar size={20} className="text-primary-600" />
+              <div>
+                <p className="text-gray-500 text-sm font-medium">
+                  {format(selectedDate, 'EEEE d MMMM yyyy', { locale: fr })}
+                </p>
+                {journeeAujourdhui && (
+                  <p className="text-lg font-bold text-gradient">
+                    {TYPE_JOURNEE_LABELS[journeeAujourdhui.typeJournee]}
+                  </p>
+                )}
+              </div>
+            </button>
+            {!isToday && (
+              <button
+                onClick={goToToday}
+                className="mt-2 px-3 py-1 bg-primary-100 text-primary-700 text-sm font-medium rounded-full hover:bg-primary-200 transition-all"
+              >
+                Aujourd'hui
+              </button>
+            )}
+          </div>
+          
+          <button
+            onClick={() => navigateDate('next')}
+            disabled={addDays(selectedDate, 1) > new Date()}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={24} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Calendrier popup */}
+        {showCalendar && (
+          <div className="mt-4 p-4 bg-white rounded-xl border border-gray-200 shadow-lg">
+            <input
+              type="date"
+              value={dateSelectionnee}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={(e) => {
+                setSelectedDate(new Date(e.target.value));
+                setShowCalendar(false);
+              }}
+              className="w-full input-field text-center text-lg"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Si pas de type de journée sélectionné pour aujourd'hui */}
+      {!journeeAujourdhui && isToday ? (
+        <SelectionTypeJournee onSelect={handleTypeJourneeSelect} />
+      ) : !journeeAujourdhui && !isToday ? (
+        <div className="card-gradient text-center py-8">
+          <span className="text-5xl mb-4 block">📅</span>
+          <p className="text-gray-600 font-medium">Aucune donnée pour ce jour</p>
+          <p className="text-sm text-gray-500 mt-2">Sélectionnez une autre date</p>
+        </div>
+      ) : (
+        <>
+
+      {/* Compteur principal */}
+      <div className="card-gradient animate-scale-in relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary-100/50 to-transparent rounded-full blur-2xl"></div>
+        <div className="relative text-center">
+          <p className="text-gray-600 mb-3 font-medium flex items-center justify-center gap-2">
+            <span className="text-2xl">🚬</span>
+            <span>Cigarettes aujourd'hui</span>
+          </p>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <span className={`text-6xl font-extrabold ${objectifAtteint ? 'text-primary-600' : 'text-red-600'} transition-all duration-300`}>
+              {nombreCigarettes}
+            </span>
+            <span className="text-4xl text-gray-300 font-light">/</span>
+            <span className="text-4xl text-gray-500 font-bold">{objectifNombre}</span>
+            <div className="ml-2">
+              {objectifAtteint ? (
+                <span className="text-4xl animate-pulse-slow">✅</span>
+              ) : (
+                <span className="text-4xl animate-pulse">⚠️</span>
+              )}
+            </div>
+          </div>
+
+          {/* Barre de progression */}
+          <div className="mt-6 relative">
+            <div className="w-full bg-gray-200 rounded-full h-4 shadow-inner">
+              <div
+                className={`h-4 rounded-full transition-all duration-500 ease-out ${
+                  objectifAtteint 
+                    ? 'bg-gradient-to-r from-primary-500 to-primary-600 shadow-glow' 
+                    : 'bg-gradient-to-r from-red-500 to-red-600'
+                }`}
+                style={{ width: `${progression}%` }}
+              >
+                <div className="h-full w-full rounded-full bg-white/20"></div>
+              </div>
+            </div>
+            <p className="text-sm text-gray-500 mt-2 font-medium">
+              {objectifAtteint ? '🎉 Objectif respecté !' : `${objectifNombre - nombreCigarettes} cigarettes restantes`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Infos rapides */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Dernière cigarette */}
+        <div className="card bg-gradient-to-br from-blue-50 to-blue-100/50 border-blue-200 hover:scale-105 transition-transform duration-300">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="bg-blue-500 p-2 rounded-lg">
+                <Clock className="text-white" size={20} />
+              </div>
+              <p className="text-xs font-semibold text-blue-900">Dernière cigarette</p>
+            </div>
+            <p className="text-lg font-bold text-blue-900 ml-1">
+              {derniereHeure ? tempsDerniereClope(derniereHeure) : 'Aucune'}
+            </p>
+          </div>
+        </div>
+
+        {/* Objectif */}
+        <div className="card bg-gradient-to-br from-green-50 to-green-100/50 border-green-200 hover:scale-105 transition-transform duration-300">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <div className="bg-green-500 p-2 rounded-lg">
+                <Target className="text-white" size={20} />
+              </div>
+              <p className="text-xs font-semibold text-green-900">Objectif du jour</p>
+            </div>
+            <p className="text-lg font-bold text-green-900 ml-1">Max {objectifNombre}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Cigarette à éviter */}
+      {cigaretteAEviter && (
+        <div className="card bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-300 animate-pulse-slow">
+          <div className="flex items-start gap-3">
+            <div className="bg-gradient-to-br from-orange-500 to-amber-500 p-3 rounded-xl shadow-lg">
+              <AlertCircle className="text-white" size={24} />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-2xl">🎯</span>
+                <p className="text-base font-bold text-orange-900">
+                  Cigarette à éviter aujourd'hui
+                </p>
+              </div>
+              <p className="text-sm text-orange-800 font-medium bg-white/50 p-2 rounded-lg">
+                {cigaretteAEviter}
+              </p>
+              <div className="flex items-start gap-1 mt-2 bg-amber-100/50 p-2 rounded-lg">
+                <span className="text-base">💡</span>
+                <p className="text-xs text-orange-700 font-medium">
+                  Essayez de sauter celle-ci pour améliorer votre score
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+      {/* Liste des cigarettes d'aujourd'hui */}
+      {cigarettesAujourdhui.length > 0 && (
+        <div className="card-gradient">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">📋</span>
+              <h3 className="text-xl font-bold text-gradient">Cigarettes {isToday ? "d'aujourd'hui" : 'du jour'}</h3>
+            </div>
+            <span className="text-sm text-gray-500 font-medium">Cliquez pour modifier</span>
+          </div>
+          <div className="space-y-3">
+            {cigarettesAujourdhui.slice().reverse().map((cig, index) => {
+              // Calculer le délai avec la cigarette précédente
+              const cigPrecedente = index < cigarettesAujourdhui.length - 1 
+                ? cigarettesAujourdhui[cigarettesAujourdhui.length - 1 - index - 1] 
+                : null;
+              
+              let delaiMinutes = 0;
+              if (cigPrecedente) {
+                const [h1, m1] = cigPrecedente.heure.split(/[h:]/).map(n => parseInt(n) || 0);
+                const [h2, m2] = cig.heure.split(/[h:]/).map(n => parseInt(n) || 0);
+                const minutes1 = h1 * 60 + m1;
+                const minutes2 = h2 * 60 + m2;
+                delaiMinutes = minutes2 - minutes1;
+              }
+
+              return (
+                <div key={cig.id}>
+                  {/* Afficher le délai si cigarette précédente */}
+                  {cigPrecedente && delaiMinutes > 0 && (
+                    <div className="flex items-center justify-center py-2">
+                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                        delaiMinutes < 60 
+                          ? 'bg-red-100 text-red-700' 
+                          : delaiMinutes < 90
+                          ? 'bg-orange-100 text-orange-700'
+                          : 'bg-green-100 text-green-700'
+                      }`}>
+                        ⏱️ {delaiMinutes < 60 
+                          ? `${delaiMinutes} min` 
+                          : `${Math.floor(delaiMinutes / 60)}h${(delaiMinutes % 60).toString().padStart(2, '0')}`
+                        }
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div
+                    onClick={() => handleCigaretteClick(cig)}
+                    className="p-4 bg-gradient-to-r from-gray-50 to-white rounded-xl shadow-soft hover:shadow-lg transition-all duration-300 border border-gray-200 hover:scale-102 animate-fade-in cursor-pointer hover:border-primary-300 group"
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-gradient-to-br from-gray-100 to-gray-200 p-2 rounded-lg group-hover:from-primary-100 group-hover:to-primary-200 transition-all">
+                      <span className="text-xl">
+                        {cig.type === 'besoin' ? '🔴' : cig.type === 'plaisir' ? '💚' : '⚪'}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900">#{cig.numero} - {cig.heure}</p>
+                      <p className="text-xs text-gray-500">{cig.type === 'besoin' ? 'Besoin' : cig.type === 'plaisir' ? 'Plaisir' : 'Automatique'}</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-sm font-bold px-3 py-1 rounded-lg ${
+                      cig.scoreCalcule <= 10
+                        ? 'bg-red-100 text-red-800'
+                        : cig.scoreCalcule <= 15
+                        ? 'bg-orange-100 text-orange-800'
+                        : cig.scoreCalcule <= 20
+                        ? 'bg-yellow-100 text-yellow-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}
+                  >
+                    Score {cig.scoreCalcule}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 text-xs">
+                  <div className="bg-gray-100 px-2 py-1 rounded text-center">
+                    <span className="block text-gray-500">Lieu</span>
+                    <span className="font-medium text-gray-800">{cig.lieu === 'maison' ? '🏠' : cig.lieu === 'travail' ? '🏢' : cig.lieu === 'exterieur' ? '🚶' : cig.lieu === 'voiture' ? '🚗' : cig.lieu === 'restaurant' ? '🍽️' : '👥'}</span>
+                  </div>
+                  <div className="bg-gray-100 px-2 py-1 rounded text-center">
+                    <span className="block text-gray-500">Besoin</span>
+                    <span className="font-medium text-gray-800">{cig.besoin}/10</span>
+                  </div>
+                  <div className="bg-gray-100 px-2 py-1 rounded text-center">
+                    <span className="block text-gray-500">Satisf.</span>
+                    <span className="font-medium text-gray-800">{cig.satisfaction}/10</span>
+                  </div>
+                  <div className="bg-gray-100 px-2 py-1 rounded text-center">
+                    <span className="block text-gray-500">Qté</span>
+                    <span className="font-medium text-gray-800">{cig.quantite === 'entiere' ? '1' : cig.quantite}</span>
+                  </div>
+                </div>
+                {cig.commentaire && (
+                  <p className="mt-2 text-xs text-gray-600 italic bg-gray-50 p-2 rounded">💬 {cig.commentaire}</p>
+                )}
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">📍 {cig.situation.replace('_', ' ')}{cig.kudzuPris ? ' • ☑️ Kudzu' : ''}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleChatClick(cig);
+                      }}
+                      className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                      title="Discuter de cette cigarette"
+                    >
+                      <MessageCircle size={16} />
+                    </button>
+                    <div className="p-1.5 text-gray-400 group-hover:text-primary-600 transition-all">
+                      <Edit3 size={16} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          </div>
+        </div>
+      )}
+
+      {/* Bouton flottant Chat IA - bien visible */}
+      <button
+        onClick={() => handleChatClick()}
+        className="fixed bottom-24 right-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-5 py-3 rounded-full shadow-2xl hover:shadow-3xl hover:scale-105 transition-all duration-300 flex items-center gap-2 z-40 animate-pulse-slow"
+        title="Discuter avec le coach IA"
+      >
+        <MessageCircle size={22} />
+        <span className="font-bold text-sm">Coach IA</span>
+      </button>
+
+      </>
+      )}
+
+      {/* Modal modifier cigarette */}
+      {cigaretteAModifier && (
+        <ModifierCigarette
+          cigarette={cigaretteAModifier}
+          onSuccess={() => {
+            setCigaretteAModifier(null);
+            chargerDonnees();
+          }}
+          onCancel={() => setCigaretteAModifier(null)}
+        />
+      )}
+
+      {/* Modal Chat IA */}
+      {showChat && (
+        <ChatIA
+          onClose={() => {
+            setShowChat(false);
+            setCigaretteForChat(null);
+          }}
+          cigaretteContext={cigaretteForChat}
+        />
+      )}
+    </div>
+  );
+}

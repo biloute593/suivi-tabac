@@ -1,0 +1,9 @@
+node_modules
+.env
+dist
+.netlify
+.vercel
+api/dist
+api/local.settings.json
+*.log
+.DS_Store
