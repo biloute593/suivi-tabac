@@ -616,7 +616,7 @@ class ApiService {
     const currentUserId = this.getCurrentUserId();
     const { data, error } = await supabase
       .from('posts')
-      .select('*, users(pseudo), post_likes(user_id), post_comments(count)')
+      .select('*, users!user_id(pseudo), post_likes(user_id), post_comments(count)')
       .order('published_at', { ascending: false })
       .limit(limit);
 
@@ -728,40 +728,6 @@ class ApiService {
       createdAt: data.created_at
     };
   }
-
-  // --- INVITATIONS & CHAT ---
-
-  async sendChatInvitation(receiverId: string): Promise<void> {
-    const senderId = this.getCurrentUserId();
-    const { error } = await supabase
-      .from('chat_invitations')
-      .insert({ sender_id: senderId, receiver_id: receiverId, status: 'pending' });
-
-    if (error) throw new Error('Erreur envoi invitation');
-  }
-
-  async getChatInvitations(): Promise<ChatInvitation[]> {
-    const userId = this.getCurrentUserId();
-    const { data, error } = await supabase
-      .from('chat_invitations')
-      .select('*, sender:users!sender_id(pseudo), receiver:users!receiver_id(pseudo)')
-      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
-
-    if (error) throw new Error('Erreur chargement invitations');
-    return data.map(i => ({
-      id: i.id,
-      senderId: i.sender_id,
-      senderPseudo: i.sender?.pseudo,
-      receiverId: i.receiver_id,
-      receiverPseudo: i.receiver?.pseudo,
-      status: i.status,
-      createdAt: i.created_at
-    }));
-  }
-
-  // --- AMIS & MESSAGERIE PRIVÉE ---
-
-  // --- AMIS & MESSAGERIE PRIVÉE ---
 
   // Rechercher des utilisateurs par pseudo
   async searchUsers(query: string): Promise<{ id: string, pseudo: string }[]> {

@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Configuration Supabase - hardcodé temporairement pour debug
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://azzltzrzmukvyaiyamkc.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF6emx0enJ6bXVrdnlhaXlhbWtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0ODQyMzEsImV4cCI6MjA4MTA2MDIzMX0.JTGjWSiWyGfZj34xBUlSqUoOp2qK3mBD0cMacBc5his';
+const supabaseUrl = 'https://gyejvnchiijounmkgqvg.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5ZWp2bmNoaWlqb3VubWtncXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwODQ1MTUsImV4cCI6MjA3NTY2MDUxNX0.APUmj_HWnTj93lFpyZ-3C8fyxgkliRdckTUe3KitvLQ';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('❌ Supabase credentials missing!');
