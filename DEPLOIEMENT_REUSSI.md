@@ -7,7 +7,7 @@
 
 ### 1. **Frontend - Azure Static Web App**
 - **Nom** : `suivi-tabac-12092254-web`
-- **URL Production** : https://witty-sea-073500903.3.azurestaticapps.net
+- **URL Production** : https://ambitious-dune-0b02f5a03.3.azurestaticapps.net
 - **Région** : West Europe
 - **Statut** : ✅ Déployé avec succès
 

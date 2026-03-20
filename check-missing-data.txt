@@ -1,0 +1,3 @@
+--- VÉRIFICATION DU 2025-12-16 ---
+Erreur Cigarettes: TypeError: fetch failed
+Erreur Journal: TypeError: fetch failed
